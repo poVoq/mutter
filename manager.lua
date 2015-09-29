@@ -150,11 +150,12 @@ local function handle_permissionquery(cs,typ,msg)
       permissions = manager.defpermissions }:save()
    cs:send(wire.make_packet(proto.PERMISSIONQUERY,pq))
 end
+
 local bit = require("bit")
 local band = bit.band
 local function handle_udptunnel(cs,typ,msg)
-   local typtarg = band(msg.sub(1,1),32)
-   if (typtarg == 0x32) then
+   local typtarg = msg:sub(1,1)
+   if (typtarg == 0x20) then
       print("PING")
       cs:send(wire.make_packet(proto.UDPTUNNEL,msg)) -- ping
    else
@@ -162,7 +163,6 @@ local function handle_udptunnel(cs,typ,msg)
       -- We are going to assume, for now... a maximum of 127 users (uid < 128)
       local newblob = typtarg..string.char(manager.user[cs].session)..blob
       local nmsg = wire.make_packet(proto.UDPTUNNEL,newblob)
-      print("UDP ->",#nmsg)
       broadcast(nmsg,cs)
    end
 
