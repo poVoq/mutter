@@ -31,7 +31,7 @@ function w.from_MSB32(s)
 end
 
 function w.make_packet(typ,data)
-   local len = data:len()
+   local len = #data
    return w.toMSB16(typ) .. w.toMSB32(len) .. data
 end
 

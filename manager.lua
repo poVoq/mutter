@@ -44,7 +44,7 @@ end
 local function broadcast(msg_p,ocs)
    for cs,u in pairs(manager.user) do
       if cs ~= ocs then
-	 print("Broadcasting to ", u.name)
+--	 print("Broadcasting to ", u.name)
 	 cs:send(msg_p)
       end
    end
@@ -67,6 +67,7 @@ local function send_user_states(ncs)
 end
 
 local function add_user(cs,aname)
+   print("Adding user...",manager.uid)
    local sid = manager.uid
    manager.user[cs] = proto.UserState { name = aname,
 					channel_id = 0,
@@ -76,10 +77,11 @@ local function add_user(cs,aname)
    manager.uid = manager.uid + 1
    return sid
 end
+
 local function terminate_user(cs)
    manager.session[manager.user[cs].session] = nil
    manager.user[cs] = nil
-   cs:close()
+--   cs:close()
 end
 
 local function remove_user(cs)
@@ -94,8 +96,15 @@ end
 
 local function handle_userstate(cs,typ,msg)
    local newval = proto.UserState:load(msg)
-   for k,v in pairs(newval) do manager.user[cs].k = v end
-   broadcast(wire.make_packet(proto.USERSTATE,msg),cs)
+   for k,v in pairs(newval) do
+      if v ~= nil and v ~= "" then
+	 print("New state ", k, " = ", v)
+	 manager.user[cs].k = v
+      end
+      print(k,manager.user[cs][k])
+   end
+   local nu_p = wire.make_packet(proto.USERSTATE,manager.user[cs]:save())
+   broadcast(nu_p,0)
 end
 
 local function handle_auth(cs,typ,msg)
@@ -106,6 +115,7 @@ local function handle_auth(cs,typ,msg)
       cs:close()
       return nil
    end
+   print("Authenticating...")
    cs:send(wire.make_packet(proto.CRYPTSETUP,cryptsetup))
    cs:send(wire.make_packet(proto.CHANNELSTATE,rootchannelstate))
    sid = add_user(cs,auth.username)
@@ -123,14 +133,11 @@ local function handle_textmessage(fromcs,typ,msg)
    txtmsg.actor = manager.user[fromcs].session
    local txtmsg_p = wire.make_packet(proto.TEXTMESSAGE,txtmsg:save())
    local sessions = txtmsg.session
-   print("Sessions = ", sessions)
    if next(sessions) == nil then
       broadcast(txtmsg_p,session)
    else
       for i,session in pairs(sessions) do
-	 print("i,Session = ", i,session)
 	 local cs = manager.session[session]
-	 print("Sending text to ", manager.user[cs].name)
 	 cs:send(txtmsg_p)
       end
    end
@@ -146,13 +153,27 @@ local function handle_permissionquery(cs,typ,msg)
    cs:send(wire.make_packet(proto.PERMISSIONQUERY,pq))
 end
 
+local function handle_udptunnel(cs,typ,msg)
+   local typtarg = msg.byte(1)
+   if (typtarg == 0x20) then
+      cs:send(wire.make_packet(proto.UDPTUNNEL,msg)) -- ping
+   else
+      local blob = msg:sub(2,-1)
+      -- We are going to assume, for now... a maximum of 127 users (uid < 128)
+      local newblob = typtarg..string.char(manager.user[cs].session)..blob
+      local nmsg = wire.make_packet(proto.UDPTUNNEL,newblob)
+      broadcast(nmsg,cs)
+   end
+
+end
+
 local function handle_undef(cs,typ,msg)
    print("Unhandled:", typ)
 end
 
 local handle_msg = {
    [proto.VERSION] = handle_version,
-   [proto.UDPTUNNEL] = handle_undef,
+   [proto.UDPTUNNEL] = handle_udptunnel,
    [proto.AUTHENTICATE] = handle_auth,
    [proto.PING] = handle_ping,
    [proto.REJECT] = handle_undef,
@@ -195,7 +216,7 @@ local function handle_register(cs,_,_)
 end
 
 local function handle_terminate(cs,_,_)
-   terminate_user(cs)
+   remove_user(cs)
 end
 
 local handle_cmd = {
