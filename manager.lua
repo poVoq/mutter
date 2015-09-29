@@ -98,10 +98,8 @@ local function handle_userstate(cs,typ,msg)
    local newval = proto.UserState:load(msg)
    for k,v in pairs(newval) do
       if v ~= nil and v ~= "" then
-	 print("New state ", k, " = ", v)
 	 manager.user[cs].k = v
       end
-      print(k,manager.user[cs][k])
    end
    local nu_p = wire.make_packet(proto.USERSTATE,manager.user[cs]:save())
    broadcast(nu_p,0)
@@ -152,16 +150,19 @@ local function handle_permissionquery(cs,typ,msg)
       permissions = manager.defpermissions }:save()
    cs:send(wire.make_packet(proto.PERMISSIONQUERY,pq))
 end
-
+local bit = require("bit")
+local band = bit.band
 local function handle_udptunnel(cs,typ,msg)
-   local typtarg = msg.byte(1)
-   if (typtarg == 0x20) then
+   local typtarg = band(msg.sub(1,1),32)
+   if (typtarg == 0x32) then
+      print("PING")
       cs:send(wire.make_packet(proto.UDPTUNNEL,msg)) -- ping
    else
       local blob = msg:sub(2,-1)
       -- We are going to assume, for now... a maximum of 127 users (uid < 128)
       local newblob = typtarg..string.char(manager.user[cs].session)..blob
       local nmsg = wire.make_packet(proto.UDPTUNNEL,newblob)
+      print("UDP ->",#nmsg)
       broadcast(nmsg,cs)
    end
 
