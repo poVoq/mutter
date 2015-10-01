@@ -13,7 +13,6 @@ local sslparams = {
   protocol = "sslv23",
   key = "./certs/serverkey.pem",
   certificate = "./certs/server.pem",
---  verify = {"peer", "client_once"},
   verify = {"none"},
   options = {"all" },
   ciphers = "HIGH+kEDH:HIGH+kEECDH:HIGH:!PSK:!SRP:!3DES:!aNULL"
@@ -32,7 +31,7 @@ local manager = nil
 local function ssl_handler(sc, host, port)
     print("Got connection from ", host, port)
     sc = copas.wrap(sc):dohandshake(sslparams)
-    mgr.notify(mgr.REGISTER, sc)
+    mgr.notify(mgr.REGISTER, sc, host,port)
     while true do
        local hdr = sc:receive(6)
        if not hdr then break end
