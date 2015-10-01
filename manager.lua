@@ -188,7 +188,8 @@ local band = bit.band
 local function handle_udptunnel(cs,typ,msg)
    manager.user[cs].use_udp = false
    local typtarg = msg:sub(1,1)
-   if (typtarg == 0x20) then
+   local typtargn = string.byte(typtarg)
+   if (typtargn == 0x20) then
       print("PING")
       cs:send(wire.make_packet(proto.UDPTUNNEL,msg)) -- ping
    else
@@ -196,7 +197,7 @@ local function handle_udptunnel(cs,typ,msg)
       -- We are going to assume, for now... a maximum of 127 users (uid < 128)
       local newblob = typtarg..string.char(manager.user[cs].state.session)..blob
       local nmsg = wire.make_packet(proto.UDPTUNNEL,newblob)
-      if (typtarg == 128) then
+      if (typtargn == 0x80) then
 	 broadcast(nmsg,cs)	-- broadcast to all
       end
    end

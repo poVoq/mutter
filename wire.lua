@@ -1,33 +1,23 @@
 local w = {}
 
+local bit=require'bit'
+local rshift,lshift,bor,band = bit.rshift,bit.lshift,bit.bor,bit.band
 
--- This needs to be heavily optimized or find a C lib to do this.
-
-local function toMSB(bytes,value)
-  local str = ""
-  for j=1,bytes do
-     str = str .. string.char(value % 256)
-     value = math.floor(value / 256)
-  end
-  return string.reverse(str)
+function w.toMSB16(value)
+   return string.char(rshift(value,8))..string.char(band(value,0xff))
+end
+function w.toMSB32(value)
+   return string.char(rshift(value,24))..string.char(rshift(value,16))..
+      string.char(rshift(value,8))..string.char(band(value,0xff))
 end
 
-
-function w.toMSB16(value) return toMSB(2,value) end
-function w.toMSB32(value) return toMSB(4,value) end
-
--- function w.toMSB16(value)
---      return string.char(math.floor(value/256))..string.char(value % 256)
--- end
-
--- function w.toMSB32(value) return toMSB(4,value) end
 
 function w.from_MSB16(s)
-   return s:byte(2) + (s:byte(1)*256)
+   return bor(s:byte(2),lshift(s:byte(1),8))
 end
 function w.from_MSB32(s)
-   return s:byte(4) + (s:byte(3)*256) + 
-      (s:byte(2)*65536) + (s:byte(1)*16777216)
+   return bor(s:byte(4), lshift(s:byte(3),8),
+	      lshift(s:byte(2),16),lshift(s:byte(1),24))
 end
 
 function w.make_packet(typ,data)
