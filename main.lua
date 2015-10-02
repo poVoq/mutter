@@ -18,8 +18,8 @@ local sslparams = {
   ciphers = "HIGH+kEDH:HIGH+kEECDH:HIGH:!PSK:!SRP:!3DES:!aNULL"
 }
 
-local function mumble(host, port, handler)
-    return copas.addserver(assert(socket.bind(host, port)),
+local function tcp_mumble(host, port, handler)
+   return copas.addserver(assert(socket.bind(host, port)),
         function(c)
             return handler(copas.wrap(c), c:getpeername())
         end)
@@ -43,7 +43,30 @@ local function ssl_handler(sc, host, port)
     print("termination from", host, port)
 end
 
-manager = mgr.start()
-mumble("*", 64738, ssl_handler)
+local function udp_mumble(host, port, handler)
+   local server = socket.udp()
+   server:setsockname(host,port)
+   return copas.addserver(server,
+			  function(c)
+			     return handler(copas.wrap(c))
+   end)
+end
+
+function udp_handler(sc)
+  sc = copas.wrap(sc)
+  print("UDP connection handler")
+  while true do
+    local data,ip,port, err = sc:receivefrom(1024)
+    if not data then
+      print("UDP Receive error: ", err)
+      return
+    end
+    mgr.notify(mgr.REQUEST_UDP, sc, ip, port, data)
+  end
+end
+
+copas.loop()manager = mgr.start()
+tcp_mumble("*", 64738, ssl_handler)
+udp_mumble("*", 64738, udp_handler)
 print("Waiting on 64738...")
 copas.loop()

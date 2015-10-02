@@ -7,8 +7,10 @@ function w.toMSB16(value)
    return string.char(rshift(value,8))..string.char(band(value,0xff))
 end
 function w.toMSB32(value)
-   return string.char(rshift(value,24))..string.char(rshift(value,16))..
-      string.char(rshift(value,8))..string.char(band(value,0xff))
+   return string.char(band(rshift(value,24),0xff))..
+      string.char(band(rshift(value,16),0xff))..
+      string.char(band(rshift(value,8),0xff))..
+      string.char(band(value,0xff))
 end
 
 

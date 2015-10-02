@@ -28,7 +28,8 @@ local manager = {
    READY = 1,
    REGISTER = 2,
    REQUEST = 3,
-   TERMINATE = 4
+   REQUEST_UDP = 4,
+   TERMINATE = 5
 
 }
 
@@ -143,7 +144,7 @@ end
 local function handle_auth(cs,typ,msg)
    local auth = proto.Authenticate:load(msg)
    local sid = add_user(cs,auth.username)
-   if manager.user_cnt == manager.max_user2 then
+   if manager.user_cnt > config.max_users then
       local rej = proto.Reject { type = "ServerFull" }:save()
       cs:send(wire.make_packet(proto.REJECT, rej))
       cs:close()
@@ -158,7 +159,6 @@ local function handle_auth(cs,typ,msg)
    print("Authenticating...")
    cs:send(wire.make_packet(proto.CRYPTSETUP,cryptsetup))
    cs:send(wire.make_packet(proto.CHANNELSTATE,rootchannelstate))
---   local sid = add_user(cs,auth.username)
    send_user_states(cs)
    cs:send(wire.make_packet(proto.SERVERCONFIG,serverconfig))
    local serversync = proto.ServerSync {
@@ -257,6 +257,25 @@ local function handle_incoming(cs,typ,msg)
    end
 end
 
+local function handle_incoming_udp(cs,ip,port,data)
+   local typtarg = wire.from_MSB32(data:sub(1,4))
+   local ident = data:sub(5,1)
+   if typtarg == 0x00 then
+      print("UDP",manager.user_cnt,config.max_users,config.max_bandwidth)
+      local stat,err = copcall(function() 
+	    cs:sendto(string.char(0,1,2)..
+			 ident..
+			 wire.toMSB32(manager.user_cnt)..
+			 wire.toMSB32(config.max_users)..
+		      wire.toMSB32(config.max_bandwidth), ip,port) end)
+      if not stat then
+	 print("handle_incoming_udp: error->",  err)
+      end
+      print("PING")
+      
+   end
+end
+
 local function handle_register(cs,ip,p)
    print("Handling registration")
    manager.user[cs] = {ipaddr = ip, port = p}
@@ -270,19 +289,20 @@ local handle_cmd = {
    [manager.READY] = handle_ready,
    [manager.REGISTER] = handle_register,
    [manager.REQUEST] = handle_incoming,
+   [manager.REQUEST_UDP] = handle_incoming_udp,
    [manager.TERMINATE] = handle_terminate
 }
 
 
-function manager.notify(cmd,csock,typ,msg)
-   coroutine.resume(manager.co,cmd,csock,typ,msg)
+function manager.notify(cmd,csock,typ,msg,opt)
+   coroutine.resume(manager.co,cmd,csock,typ,msg,(opt or ""))
 end
 
 function manager.loop()
    local resp = ""
    while true do
-      local cmd,csock,typ,msg = coroutine.yield(resp)
-      handle_cmd[cmd](csock,typ,msg)
+      local cmd,csock,typ,msg,opt = coroutine.yield(resp)
+      handle_cmd[cmd](csock,typ,msg,opt)
    end
 end
 
