@@ -9,6 +9,7 @@ local config = {
    channel_description = "A meeting about this software.",
    serverpassword = "maroc",
    max_bandwidth = 720000,
+   max_users = 127,
    welcome_text = "Hello!",
    defpermissions = 0xf07ff,
 }
@@ -18,6 +19,7 @@ local version = proto.Version {
    version = 0x0000010200, release = "alpha", os = "OSv" }:save()
 
 local manager = {
+   user_cnt = 0,
    user = {},	      -- key is socket (cs) -> {use_udp,ipaddr,port,state}
    session = {},		  -- key is session uid -> socket (cs)
    ip = {},			  -- key is ipaddr -> cs or nil
@@ -101,10 +103,11 @@ local function add_user(cs,aname)
    manager.ip[ipaddr]=cs
    manager.user[cs].use_udp=false
    manager.uid = manager.uid + 1
+   manager.user_cnt = manager.user_cnt + 1
    return sid
 end
 
-local function terminate_user(cs)
+local function remove_user(cs)
    local sid = manager.user[cs].state.session
    local ipaddr = manager.user[cs].ipaddr
 
@@ -113,16 +116,16 @@ local function terminate_user(cs)
 
    manager.session[sid] = nil
    manager.user[cs] = nil
---   cs:close()
+   manager.user_cnt = manager.user_cnt - 1
 end
 
-local function remove_user(cs)
+local function terminate_user(cs)
    local ur =proto.UserRemove { session = manager.user[cs].state.session,
 				 actor = 0 }:save()				 
    local rm_p = wire.make_packet(proto.USERREMOVE,ur)
-   print("Removing user:", manager.user[cs].state.name)
+   print("Terminate user:", manager.user[cs].state.name)
    broadcast(rm_p,cs)
-   terminate_user(cs)
+   remove_user(cs)
 end
 
 
@@ -139,6 +142,13 @@ end
 
 local function handle_auth(cs,typ,msg)
    local auth = proto.Authenticate:load(msg)
+   local sid = add_user(cs,auth.username)
+   if manager.user_cnt == manager.max_user2 then
+      local rej = proto.Reject { type = "ServerFull" }:save()
+      cs:send(wire.make_packet(proto.REJECT, rej))
+      cs:close()
+      return nil
+   end
    if auth.password ~= config.serverpassword then
       local rej = proto.Reject { type = "WrongServerPW" }:save()
       cs:send(wire.make_packet(proto.REJECT, rej))
@@ -148,7 +158,7 @@ local function handle_auth(cs,typ,msg)
    print("Authenticating...")
    cs:send(wire.make_packet(proto.CRYPTSETUP,cryptsetup))
    cs:send(wire.make_packet(proto.CHANNELSTATE,rootchannelstate))
-   sid = add_user(cs,auth.username)
+--   local sid = add_user(cs,auth.username)
    send_user_states(cs)
    cs:send(wire.make_packet(proto.SERVERCONFIG,serverconfig))
    local serversync = proto.ServerSync {
@@ -253,7 +263,7 @@ local function handle_register(cs,ip,p)
 end
 
 local function handle_terminate(cs,_,_)
-   remove_user(cs)
+   terminate_user(cs)
 end
 
 local handle_cmd = {
