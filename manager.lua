@@ -86,14 +86,16 @@ local function send_user_states(ncs)
 
    -- tell new user about everybody
    for cs,user in pairs(manager.user) do
-      print(manager.user[ncs].state.name, "Here is ",user.state.name,
-	    user.state.session)
-      ncs:send(wire.make_packet(proto.USERSTATE, user.state:save()))
+      if (manager.user[ncs].state) then
+	 print(manager.user[ncs].state.name, "Here is ",user.state.name,
+	       user.state.session)
+	 ncs:send(wire.make_packet(proto.USERSTATE, user.state:save()))
+      end
    end
 end
 
 local function add_user(cs,aname)
-   print("Adding user...",manager.uid)
+   print("Adding user...",manager.uid,cs)
    local sid = manager.uid
    local ipaddr = manager.user[cs].ipaddr
    manager.user[cs].state = proto.UserState { name = aname,
@@ -109,23 +111,32 @@ local function add_user(cs,aname)
 end
 
 local function remove_user(cs)
-   local sid = manager.user[cs].state.session
    local ipaddr = manager.user[cs].ipaddr
+   if manager.user[cs].state then
+      local sid = manager.user[cs].state.session
 
+      print("Removing user:", manager.user[cs].state.name)
+      manager.session[sid] = nil
+   else
+      print("Removing unregistered user.")
+   end
+   
    -- BUG BUG This is a problem with clients coming from same IP
    manager.ip[ipaddr] = nil	
 
-   manager.session[sid] = nil
    manager.user[cs] = nil
    manager.user_cnt = manager.user_cnt - 1
 end
 
 local function terminate_user(cs)
-   local ur =proto.UserRemove { session = manager.user[cs].state.session,
-				 actor = 0 }:save()				 
-   local rm_p = wire.make_packet(proto.USERREMOVE,ur)
-   print("Terminate user:", manager.user[cs].state.name)
-   broadcast(rm_p,cs)
+   if cs == nil then return nil end
+   if manager.user[cs].state then
+      local ur =proto.UserRemove { session = manager.user[cs].state.session,
+				   actor = 0 }:save()				 
+      local rm_p = wire.make_packet(proto.USERREMOVE,ur)
+      print("Terminate user:", manager.user[cs].state.name)
+      broadcast(rm_p,cs)
+   end
    remove_user(cs)
 end
 
@@ -251,28 +262,19 @@ local function handle_ready(cs,_,_)
 end
 
 local function handle_incoming(cs,typ,msg)
-   local stat,err = copcall(function() handle_msg[typ](cs,typ,msg) end)
-   if not stat then
-      print("handle_incoming: type,error->", typ, err)
-   end
+   handle_msg[typ](cs,typ,msg)
 end
 
 local function handle_incoming_udp(cs,ip,port,data)
    local typtarg = wire.from_MSB32(data:sub(1,4))
-   local ident = data:sub(5,1)
+   local ident = data:sub(5,13)
    if typtarg == 0x00 then
-      print("UDP",manager.user_cnt,config.max_users,config.max_bandwidth)
-      local stat,err = copcall(function() 
-	    cs:sendto(string.char(0,1,2)..
-			 ident..
-			 wire.toMSB32(manager.user_cnt)..
-			 wire.toMSB32(config.max_users)..
-		      wire.toMSB32(config.max_bandwidth), ip,port) end)
-      if not stat then
-	 print("handle_incoming_udp: error->",  err)
-      end
-      print("PING")
-      
+      cs:sendto(string.char(0,1,2,0)..
+		   ident..
+		   wire.toMSB32(manager.user_cnt)..
+		   wire.toMSB32(config.max_users)..
+		wire.toMSB32(config.max_bandwidth), ip,port)
+--      print("PING")
    end
 end
 
@@ -282,6 +284,7 @@ local function handle_register(cs,ip,p)
 end
 
 local function handle_terminate(cs,_,_)
+   print("handle_terminate",cs)
    terminate_user(cs)
 end
 
@@ -294,9 +297,12 @@ local handle_cmd = {
 }
 
 
-function manager.notify(cmd,csock,typ,msg,opt)
-   coroutine.resume(manager.co,cmd,csock,typ,msg,(opt or ""))
+
+function manager.notify(cmd,...)
+   local stat,err = coroutine.resume(manager.co,cmd,...)
+   if not stat then print("notify:", err) end
 end
+
 
 function manager.loop()
    local resp = ""
