@@ -95,11 +95,13 @@ local function send_user_states(ncs)
 end
 
 local function add_user(cs,aname)
+   if cs == nil then return end
    print("Adding user...",manager.uid,cs)
    local sid = manager.uid
    local ipaddr = manager.user[cs].ipaddr
    manager.user[cs].state = proto.UserState { name = aname,
 					      channel_id = 0,
+					      actor = 1,
 					      session = sid,
 					      user_id = sid }
    manager.session[sid] = cs
@@ -143,13 +145,20 @@ end
 
 local function handle_userstate(cs,typ,msg)
    local newval = proto.UserState:load(msg)
+--   manager.user[cs].state:merge(newval)
    for k,v in pairs(newval) do
-      if v ~= nil and v ~= "" then
-	 manager.user[cs].state.k = v
+      -- Why am I getting 0 for nil values?????
+      -- Apparently the pb4lua mumble.lua forces all nil number fields to be 0.
+      -- Ugh. Bad.
+      if v ~= nil and v ~= "" and v ~= 0 then
+   	 manager.user[cs].state[k] = v
       end
    end
-   local nu_p = wire.make_packet(proto.USERSTATE,manager.user[cs].state:save())
-   broadcast(nu_p,0)
+   for k,v in pairs(manager.user[cs].state) do
+      print(k,"=",v)
+   end
+   local us_p = wire.make_packet(proto.USERSTATE,manager.user[cs].state:save())
+   broadcast(us_p,0)
 end
 
 local function handle_auth(cs,typ,msg)
@@ -298,9 +307,13 @@ local handle_cmd = {
 
 
 
-function manager.notify(cmd,...)
-   local stat,err = coroutine.resume(manager.co,cmd,...)
-   if not stat then print("notify:", err) end
+-- function manager.notify(cmd,...)
+--    local stat,err = coroutine.resume(manager.co,cmd,...)
+--    if not stat then print("notify:", err) end
+-- end
+
+function manager.notify(cmd,csock,typ,msg,opt)
+   handle_cmd[cmd](csock,typ,msg,opt)
 end
 
 
@@ -313,8 +326,9 @@ function manager.loop()
 end
 
 function manager.start()
+   print"Starting manager"
    manager.co = coroutine.create(manager.loop)
-   manager.notify(READY)
+   manager.notify(manager.READY)
    return manager.co
 end
 

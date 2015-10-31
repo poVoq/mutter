@@ -72,7 +72,9 @@ function udp_handler(sc)
 end
 
 copas.autoclose=true
-copas.loop()manager = mgr.start()
+-- copas.loop()
+manager = mgr.start()
+print("Manager", manager)
 tcp_mumble("*", 64738, ssl_handler)
 udp_mumble("*", 64738, udp_handler)
 print("Waiting on 64738...")
