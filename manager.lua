@@ -2,17 +2,11 @@ local proto=require'proto'
 local wire=require'wire'
 local copas=require'copas'
 local crypto=require'crypto'
+local bit=require'bit'
+local rshift,lshift,bor,band = bit.rshift,bit.lshift,bit.bor,bit.band
 require'coxpcall'
 
-local config = {
-   channel_name = "Confab Meet",
-   channel_description = "A meeting about this software.",
-   serverpassword = "maroc",
-   max_bandwidth = 720000,
-   max_users = 127,
-   welcome_text = "Hello!",
-   defpermissions = 0xf07ff,
-}
+local config = require'config'
 
 
 local version = proto.Version {
@@ -213,13 +207,11 @@ local function handle_permissionquery(cs,typ,msg)
    cs:send(wire.make_packet(proto.PERMISSIONQUERY,pq))
 end
 
-local bit = require("bit")
-local band = bit.band
 local function handle_udptunnel(cs,typ,msg)
    manager.user[cs].use_udp = false
    local typtarg = msg:sub(1,1)
    local typtargn = string.byte(typtarg)
-   if (typtargn == 0x20) then
+   if typtargn == 0x20 then
       print("PING")
       cs:send(wire.make_packet(proto.UDPTUNNEL,msg)) -- ping
    else
@@ -227,7 +219,7 @@ local function handle_udptunnel(cs,typ,msg)
       -- We are going to assume, for now... a maximum of 127 users (uid < 128)
       local newblob = typtarg..string.char(manager.user[cs].state.session)..blob
       local nmsg = wire.make_packet(proto.UDPTUNNEL,newblob)
-      if (typtargn == 0x80) then
+      if typtargn == 0x80 then
 	 broadcast(nmsg,cs)	-- broadcast to all
       end
    end
@@ -283,7 +275,16 @@ local function handle_incoming_udp(cs,ip,port,data)
 		   wire.toMSB32(manager.user_cnt)..
 		   wire.toMSB32(config.max_users)..
 		wire.toMSB32(config.max_bandwidth), ip,port)
---      print("PING")
+      print("PING")
+   else
+      -- handle decryption???? AES-OCB-128
+      -- http://web.cs.ucdavis.edu/~rogaway/ocb/license.htm says this
+      -- can't be used for military purposes and I can't find it in
+      -- libcrypto anyway.. ugh.
+      --
+--      local typtarg = band(rshift(data:byte(1),5),0x7)
+--      local target = band(data:byte(1),0x1f)
+--      print("udp voice:",data:byte(1),typtarg,target)
    end
 end
 
@@ -307,12 +308,12 @@ local handle_cmd = {
 
 
 
--- function manager.notify(cmd,...)
---    local stat,err = coroutine.resume(manager.co,cmd,...)
---    if not stat then print("notify:", err) end
--- end
+function manager.notify(cmd,...)
+    local stat,err = coroutine.resume(manager.co,cmd,...)
+    if not stat then print("notify:", err) end
+end
 
-function manager.notify(cmd,csock,typ,msg,opt)
+function manager.notify_no_coroutine(cmd,csock,typ,msg,opt)
    handle_cmd[cmd](csock,typ,msg,opt)
 end
 
@@ -326,7 +327,7 @@ function manager.loop()
 end
 
 function manager.start()
-   print"Starting manager"
+   print("Starting manager for "..config.channel_name)
    manager.co = coroutine.create(manager.loop)
    manager.notify(manager.READY)
    return manager.co
