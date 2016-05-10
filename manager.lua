@@ -8,6 +8,8 @@ require'coxpcall'
 
 local config = require'config'
 
+local mbcs = "127.0.0.99"
+
 
 local version = proto.Version {
    version = 0x0000010200, release = "alpha", os = "OSv" }:save()
@@ -52,7 +54,7 @@ end
 
 local function broadcast(msg_p,ocs)
    for cs,_ in pairs(manager.user) do
-      if cs ~= ocs then
+      if cs ~= ocs and cs ~= mbcs then
 	 cs:send(msg_p)
       end
    end
@@ -88,6 +90,7 @@ local function send_user_states(ncs)
    end
 end
 
+
 local function add_user(cs,aname)
    if cs == nil then return end
    print("Adding user...",manager.uid,cs)
@@ -107,6 +110,7 @@ local function add_user(cs,aname)
 end
 
 local function remove_user(cs)
+   if cs == nil or cs == mbcs then return nil end
    local ipaddr = manager.user[cs].ipaddr
    if manager.user[cs].state then
       local sid = manager.user[cs].state.session
@@ -125,7 +129,7 @@ local function remove_user(cs)
 end
 
 local function terminate_user(cs)
-   if cs == nil then return nil end
+   if cs == nil or cs == mbcs then return nil end
    if manager.user[cs].state then
       local ur =proto.UserRemove { session = manager.user[cs].state.session,
 				   actor = 0 }:save()				 
@@ -182,6 +186,19 @@ local function handle_auth(cs,typ,msg)
    cs:send(wire.make_packet(proto.SERVERSYNC,serversync))
 end
 
+local function mutter_request(fromcs,msg)
+   print("Got request:",msg.message)
+   local respmsg = proto.TextMessage {
+      actor = manager.user[mbcs].state.session,
+      session = msg.session,
+      channel_id = msg.channel_id,
+      tree_id = msg.tree_id,
+      message = "Okay boss" }
+   local respmsg_p = wire.make_packet(proto.TEXTMESSAGE,respmsg:save())
+   local cs = manager.session[manager.user[fromcs].state.session]
+   cs:send(respmsg_p)
+end
+
 local function handle_textmessage(fromcs,typ,msg)
    local txtmsg = proto.TextMessage:load(msg)
    txtmsg.actor = manager.user[fromcs].state.session
@@ -192,7 +209,11 @@ local function handle_textmessage(fromcs,typ,msg)
    else
       for i,session in pairs(sessions) do
 	 local cs = manager.session[session]
-	 cs:send(txtmsg_p)
+	 if cs == mbcs then
+	    mutter_request(fromcs,txtmsg)
+	 else
+	    cs:send(txtmsg_p)
+	 end
       end
    end
 end
@@ -326,7 +347,13 @@ function manager.loop()
    end
 end
 
+local function init_mutterbot()
+   handle_register(mbcs,0,0)
+   add_user(mbcs,"mutterbot")
+end
+
 function manager.start()
+   init_mutterbot()
    print("Starting manager for "..config.channel_name)
    manager.co = coroutine.create(manager.loop)
    manager.notify(manager.READY)
