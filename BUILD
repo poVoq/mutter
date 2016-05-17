@@ -3,3 +3,4 @@ luarocks --tree=. install luasocket
 luarocks --tree=. install copas
 luarocks --tree=. install LuaCrypto
 luarocks --tree=. install luasec
+luarocks --tree=. install randbytes

@@ -168,7 +168,11 @@ local function handle_auth(cs,typ,msg)
       cs:close()
       return nil
    end
-   if auth.password ~= config.serverpassword then
+   if auth.username == config.coordinator and
+      auth.password ~= config.coordinatorpassword or
+      auth.username ~= config.coordinator and
+      auth.password ~= config.userpassword
+   then
       local rej = proto.Reject { type = "WrongServerPW" }:save()
       cs:send(wire.make_packet(proto.REJECT, rej))
       cs:close()
@@ -186,14 +190,35 @@ local function handle_auth(cs,typ,msg)
    cs:send(wire.make_packet(proto.SERVERSYNC,serversync))
 end
 
+
+local crypto = require'crypto'
+local rand = require'randbytes'
+
+local mutter_req = {
+   ["genpass"] = function (cfg,req)
+      local pass = crypto.hex(rand(4))
+      cfg.userpassword = pass
+      return("User Password is "..pass)
+   end,
+   ["welcome"] = function (cfg,req,p1)
+      cfg.welcome_text = p1
+      return("Welcome text is set to:"..p1)
+   end,
+   ["unknown-request"] = function (cfg,req)
+      return("Huh? "..req)
+   end
+}
+
 local function mutter_request(fromcs,msg)
    print("Got request:",msg.message)
+   local req,a1 = string.match(msg.message,"(%S+)%s*(.+)")
+   local doreq = mutter_req[req] or mutter_req["unknown-request"]
    local respmsg = proto.TextMessage {
       actor = manager.user[mbcs].state.session,
       session = msg.session,
       channel_id = msg.channel_id,
       tree_id = msg.tree_id,
-      message = "Okay boss" }
+      message = doreq(config,req,a1) }
    local respmsg_p = wire.make_packet(proto.TEXTMESSAGE,respmsg:save())
    local cs = manager.session[manager.user[fromcs].state.session]
    cs:send(respmsg_p)

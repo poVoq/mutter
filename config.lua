@@ -1,7 +1,9 @@
 return {
-   channel_name = "Confab Meet",
+   channel_name = "Mutter Meet",
    channel_description = "A meeting about this software.",
-   serverpassword = "maroc",
+   coordinator = "todd",
+   coordinatorpassword = "maroc",
+   userpassword = "open",
    max_bandwidth = 720000,
    max_users = 127,
    welcome_text = "Hello!",
