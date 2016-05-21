@@ -201,7 +201,7 @@ local function mutter_request(fromcs,msg)
       session = msg.session,
       channel_id = msg.channel_id,
       tree_id = msg.tree_id,
-      message = doreq(config,req,a1) }
+      message = doreq.func(mutterbotreq,config,req,a1) }
    local respmsg_p = wire.make_packet(proto.TEXTMESSAGE,respmsg:save())
    local cs = manager.session[manager.user[fromcs].state.session]
    cs:send(respmsg_p)
